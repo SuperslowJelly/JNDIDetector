@@ -2,35 +2,21 @@ package com.github.superslowjelly.jndidetector;
 
 import com.github.superslowjelly.jndidetector.configuration.Config;
 import com.github.superslowjelly.jndidetector.configuration.ConfigManager;
-import com.google.inject.Inject;
-import org.slf4j.Logger;
-import org.spongepowered.api.Sponge;
-import org.spongepowered.api.command.CommandManager;
-import org.spongepowered.api.command.CommandSource;
-import org.spongepowered.api.config.ConfigDir;
-import org.spongepowered.api.entity.living.player.Player;
-import org.spongepowered.api.event.Listener;
-import org.spongepowered.api.event.Order;
-import org.spongepowered.api.event.filter.cause.Root;
-import org.spongepowered.api.event.game.GameReloadEvent;
-import org.spongepowered.api.event.game.state.GameConstructionEvent;
-import org.spongepowered.api.event.game.state.GamePreInitializationEvent;
-import org.spongepowered.api.event.message.MessageChannelEvent;
-import org.spongepowered.api.plugin.Plugin;
-import org.spongepowered.api.text.serializer.TextSerializers;
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
-@Plugin(
-    id = "jndidetector",
-    name = "JNDIDetector",
-    description = "Standalone detector/mitigator for the Log4J JNDI exploit, with configurable options for console logging, player messaging, and command execution on detection.",
-    authors = {
-        "SuperslowJelly"
-    }
-)
-public class JNDIDetector {
+public final class JNDIDetector extends JavaPlugin implements Listener {
 
     private static JNDIDetector instance;
 
@@ -38,54 +24,50 @@ public class JNDIDetector {
 
     private ConfigManager configManager;
 
-    @Inject private Logger logger;
-
-    @Inject @ConfigDir(sharedRoot = true) private File configDir;
+    private final Logger LOGGER = this.getLogger();
 
     public static JNDIDetector get() { return JNDIDetector.instance; }
 
-    public static File getConfigDir() { return JNDIDetector.get().configDir; }
+    public static File getConfigDir() { return JNDIDetector.get().getDataFolder(); }
 
-    @Listener
-    public void onGameConstruction(GameConstructionEvent event) { JNDIDetector.instance = this; }
-
-    @Listener public void onGamePreInit(GamePreInitializationEvent event) {
-        this.logger.info("Loading config...");
-        this.configManager = new ConfigManager();
+    @Override
+    public void onEnable() {
+        JNDIDetector.instance = this;
+        this.getServer().getPluginManager().registerEvents(this, this);
+        this.LOGGER.info("Loading config...");
+        configManager = new ConfigManager();
     }
 
-    @Listener(order = Order.FIRST)
-    public void onSpongeMessage(MessageChannelEvent event, @Root Player player) {
-        String message = event.getFormatter().getBody().toText().toPlain().toLowerCase();
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onSpigotMessage(AsyncPlayerChatEvent event) {
+        Player player = event.getPlayer();
+        String message = event.getMessage().toLowerCase();
 
         if (PATTERN.matcher(message).find()) {
-            event.setMessageCancelled(true);
+            event.setCancelled(true);
 
             Config config = this.configManager.getConfig();
 
             if (!config.LOGGER_MESSAGES.isEmpty()) {
                 for (String loggerMessage : config.LOGGER_MESSAGES) {
-                    this.logger.warn(loggerMessage.replace("%player%", player.getName()));
+                    this.LOGGER.warning(loggerMessage.replace("%player%", player.getName()));
                 }
             }
 
             if (!config.PLAYER_MESSAGES.isEmpty()) {
                 for (String playerMessage : config.PLAYER_MESSAGES) {
-                    player.sendMessage(TextSerializers.FORMATTING_CODE.deserialize(playerMessage.replace("%player%", player.getName())));
+                    player.sendMessage(
+                        ChatColor.translateAlternateColorCodes('&', playerMessage.replace("%player%", player.getName())));
+                    player.sendRawMessage("");
                 }
             }
 
             if (!config.COMMANDS.isEmpty()) {
-                CommandManager commandManager = Sponge.getCommandManager();
-                CommandSource console = Sponge.getServer().getConsole();
+                ConsoleCommandSender console = this.getServer().getConsoleSender();
                 for (String command : config.COMMANDS) {
-                    commandManager.process(console, command.replace("%player%", player.getName()));
+                    Bukkit.getScheduler().runTask(this, () -> Bukkit.dispatchCommand(console, command.replace("%player%", player.getName())));
                 }
             }
         }
-    }
-
-    @Listener public void onGameReload(GameReloadEvent event) {
-        this.configManager.reload();
     }
 }

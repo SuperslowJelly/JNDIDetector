@@ -1,0 +1,9 @@
+name: JNDIDetector
+version: '${version}'
+main: com.github.superslowjelly.jndidetector.JNDIDetector
+api-version: 1.18
+prefix: JNDIDetector
+load: STARTUP
+authors: [ SuperslowJelly ]
+description: Standalone detector/mitigator for the Log4J JNDI exploit, with configurable options for console logging, player messaging, and command execution on detection.
+website: https://github.com/SuperslowJelly
